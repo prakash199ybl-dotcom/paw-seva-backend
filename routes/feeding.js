@@ -1,0 +1,10 @@
+const express = require('express');
+const router = express.Router();
+const { getFeedingLogs, createFeedingLog, getFeedingStats, deleteFeedingLog } = require('../controllers/feedingController');
+const { protect } = require('../middleware/auth');
+const { adminOnly, authorizeRoles } = require('../middleware/adminOnly');
+router.use(protect);
+router.route('/').get(getFeedingLogs).post(authorizeRoles('Feeder', 'admin'), createFeedingLog);
+router.get('/stats', adminOnly, getFeedingStats);
+router.delete('/:id', adminOnly, deleteFeedingLog);
+module.exports = router;

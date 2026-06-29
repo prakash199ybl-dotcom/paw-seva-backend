@@ -1,0 +1,11 @@
+const express = require('express');
+const router = express.Router();
+const { getRescues, getRescueById, createRescue, acceptRescue, updateRescue, deleteRescue } = require('../controllers/rescueController');
+const { protect } = require('../middleware/auth');
+const { adminOnly, authorizeRoles } = require('../middleware/adminOnly');
+router.use(protect);
+router.route('/').get(getRescues).post(createRescue);
+router.get('/:id', getRescueById);
+router.patch('/:id/accept', authorizeRoles('Volunteer', 'NGO', 'admin'), acceptRescue);
+router.route('/:id').patch(adminOnly, updateRescue).delete(adminOnly, deleteRescue);
+module.exports = router;
