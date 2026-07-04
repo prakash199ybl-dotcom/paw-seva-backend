@@ -8,6 +8,10 @@ const cors     = require('cors');
 const dotenv   = require('dotenv');
 const connectDB = require('./config/db');
 
+// Existing routes:
+const activityRoutes = require('./routes/activities');
+app.use('/api/activities', activityRoutes);
+
 // Load environment variables from .env file
 dotenv.config();
 
@@ -64,6 +68,8 @@ app.use('/api/users',     require('./routes/users'));
 app.use('/api/rescues',   require('./routes/rescues'));
 app.use('/api/donations', require('./routes/donations'));
 app.use('/api/feeding',   require('./routes/feeding'));
+const activityRoutes = require('./routes/activities');
+app.use('/api/activities', activityRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
