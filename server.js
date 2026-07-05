@@ -9,8 +9,7 @@ const dotenv   = require('dotenv');
 const connectDB = require('./config/db');
 
 // Existing routes:
-const activityRoutes = require('./routes/activities');
-app.use('/api/activities', activityRoutes);
+
 // app.use('/api/activities', activityRoutes);
 
 // Load environment variables from .env file
@@ -69,7 +68,7 @@ app.use('/api/users',     require('./routes/users'));
 app.use('/api/rescues',   require('./routes/rescues'));
 app.use('/api/donations', require('./routes/donations'));
 app.use('/api/feeding',   require('./routes/feeding'));
-app.use('/api/activities', activityRoutes);
+app.use('/api/activities', require('./routes/activities'));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
