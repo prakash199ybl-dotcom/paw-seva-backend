@@ -25,6 +25,8 @@ app.use('/api/rescues',    require('./routes/rescues'));
 app.use('/api/donations',  require('./routes/donations'));
 app.use('/api/feeding',    require('./routes/feeding'));
 app.use('/api/activities', require('./routes/activities'));
+app.use('/api/stories', require('./routes/stories'));   // v5: stories banner
+
 
 // ── Health check ──────────────────────────────────────────────
 app.get('/', (req, res) => {
