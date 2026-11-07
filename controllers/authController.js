@@ -1,17 +1,14 @@
 // ============================================================
-//   PAW SEVA — controllers/authController.js (v5.1)
-//   FIX: Login OTP ab backend se verify hota hai (real token milta hai).
-//   Pehle frontend OTP khud banata tha, backend ko pata hi nahi tha,
-//   isliye login-phone 401 deta tha aur demo (fake) session ban jata tha.
-//
-//   Env (Render):
-//     OTP_SHOW_ON_SCREEN=true  -> OTP screen par dikhega (SMS lagne tak testing)
-//     SMS lagne ke baad isko hata do / false kar do.
+//   PAW SEVA — controllers/authController.js (v5.2)
+//   v5.1: Login OTP backend se verify hota hai (real token).
+//   v5.2: OTP delivery MSG91 SMS / WhatsApp se (utils/otpDelivery.js).
+//         Admin OTP login: SIRF jab real SMS/WhatsApp lagi ho.
 // ============================================================
 const crypto = require('crypto');
 const jwt    = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User   = require('../models/User');
+const { deliverOtp, pickMode, anyProviderConfigured } = require('../utils/otpDelivery');
 
 // ── Token helpers ──────────────────────────────────────────────
 const generateToken = (id, role) =>
@@ -40,17 +37,7 @@ const RESEND_GAP_MS = 30 * 1000;       // 30 sec se pehle dubara OTP nahi
 const wrongTries = new Map();          // phone -> galat try count (server restart par reset)
 const lastSent   = new Map();          // phone -> last OTP bhejne ka time
 
-const showOtpOnScreen = () =>
-  process.env.OTP_SHOW_ON_SCREEN === 'true' || process.env.NODE_ENV !== 'production';
-
-// SMS bhejne ki jagah. Real SMS (MSG91/Twilio) yahin lagega.
-async function deliverOtp(phone, otp) {
-  // TODO: real SMS provider yahan call karo.
-  if (showOtpOnScreen()) return { dev_otp: otp };
-  const e = new Error('SMS service abhi configure nahi hai.');
-  e.status = 503;
-  throw e;
-}
+const ADMIN_OTP_MSG = 'Admin OTP login tabhi chalta hai jab real SMS/WhatsApp lagi ho. Abhi email aur password se login karein.';
 
 // ── Signup (email + optional phone) ────────────────────────────
 const signup = async (req, res) => {
@@ -96,10 +83,11 @@ const login = async (req, res) => {
   }
 };
 
-// ── Send OTP (sirf registered number ko) ───────────────────────
+// ── Send OTP (sirf registered number ko) — channel: sms | whatsapp ──
 const sendOTP = async (req, res) => {
   try {
-    const phone = String((req.body && req.body.phone) || '').trim();
+    const phone   = String((req.body && req.body.phone) || '').trim();
+    const channel = req.body && req.body.channel === 'whatsapp' ? 'whatsapp' : 'sms';
     if (!/^\d{10}$/.test(phone)) {
       return res.status(400).json({ success: false, message: 'Valid 10-digit mobile number daalein.' });
     }
@@ -107,14 +95,17 @@ const sendOTP = async (req, res) => {
     const user = await User.findOne({ phone });
     if (!user) return res.status(404).json({ success: false, message: 'Is number se account nahi mila. Pehle Sign Up karein.' });
     if (user.isActive === false) return res.status(403).json({ success: false, message: 'Aapka account disable hai.' });
-    if (user.role === 'admin')   return res.status(403).json({ success: false, message: 'Admin account email aur password se login hota hai.' });
+    // Admin ko OTP tabhi, jab OTP private raaste (SMS/WhatsApp) se jaye — screen par nahi
+    if (user.role === 'admin' && pickMode(channel) === 'screen') {
+      return res.status(403).json({ success: false, message: ADMIN_OTP_MSG });
+    }
 
     if (Date.now() - (lastSent.get(phone) || 0) < RESEND_GAP_MS) {
       return res.status(429).json({ success: false, message: 'Thodi der baad dubara OTP mangwayein.' });
     }
 
     const otp   = String(crypto.randomInt(100000, 1000000));
-    const extra = await deliverOtp(phone, otp);           // fail hua to kuch save nahi hota
+    const extra = await deliverOtp(phone, otp, channel);   // fail hua to kuch save nahi hota
 
     await User.updateOne({ phone }, {
       $set: { otp: await bcrypt.hash(otp, 10), otpExpiry: new Date(Date.now() + OTP_TTL_MS) },
@@ -122,7 +113,7 @@ const sendOTP = async (req, res) => {
     lastSent.set(phone, Date.now());
     wrongTries.delete(phone);
 
-    res.json({ success: true, message: 'OTP bhej diya gaya.', ...extra });
+    res.json({ success: true, message: 'OTP bhej diya gaya.', channel, ...extra });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'OTP bhejne mein error aaya.' });
   }
@@ -140,7 +131,9 @@ const loginWithPhone = async (req, res) => {
     const user = await User.findOne({ phone }).select('+otp +otpExpiry');
     if (!user) return res.status(404).json({ success: false, message: 'Is number se account nahi mila. Pehle Sign Up karein.' });
     if (user.isActive === false) return res.status(403).json({ success: false, message: 'Aapka account disable hai.' });
-    if (user.role === 'admin')   return res.status(403).json({ success: false, message: 'Admin account email aur password se login hota hai.' });
+    if (user.role === 'admin' && !anyProviderConfigured()) {
+      return res.status(403).json({ success: false, message: ADMIN_OTP_MSG });
+    }
 
     const notExpired = user.otp && user.otpExpiry && new Date(user.otpExpiry) > new Date();
     const valid = notExpired && await bcrypt.compare(otp, user.otp);
